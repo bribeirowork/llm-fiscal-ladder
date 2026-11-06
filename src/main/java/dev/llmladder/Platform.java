@@ -19,6 +19,7 @@ import java.time.Clock;
 
 /** Composição sem framework: a mesma montagem serve à API, à CLI de evals e aos testes. */
 public final class Platform {
+    public final boolean simulatedLlm;
     public final Clock clock;
     public final AiGateway gateway;
     public final KnowledgeBase knowledge;
@@ -34,6 +35,7 @@ public final class Platform {
     public final FiscalAgent agent;
 
     public Platform(LlmClient client, ModelCatalog catalog, AiGateway.Limits limits, Clock clock) {
+        this.simulatedLlm = client instanceof SimulatedLlmClient;
         this.clock = clock;
         this.gateway = new AiGateway(client, catalog, limits, clock);
         this.knowledge = KnowledgeBase.fromClasspath();

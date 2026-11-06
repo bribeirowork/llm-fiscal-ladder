@@ -10,6 +10,7 @@ import dev.llmladder.core.Principal;
 import dev.llmladder.fiscal.AccessKey;
 import dev.llmladder.observability.TaskTrace;
 import dev.llmladder.observability.UsageLedger;
+import dev.llmladder.observability.UsageReportImage;
 import dev.llmladder.rag.Answer;
 import dev.llmladder.workflow.WorkflowResult;
 import java.time.LocalDate;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -110,6 +112,14 @@ class AssistantController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestAttribute(ApiKeyFilter.PRINCIPAL) Principal principal) {
         return platform.gateway.usage().report(principal.tenant(), from, to);
+    }
+
+    @GetMapping(value = "/usage/report.png", produces = MediaType.IMAGE_PNG_VALUE)
+    byte[] usageImage(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestAttribute(ApiKeyFilter.PRINCIPAL) Principal principal) {
+        return UsageReportImage.render(platform.gateway.usage().report(principal.tenant(), from, to), platform.simulatedLlm);
     }
 
     @PostMapping("/feedback")

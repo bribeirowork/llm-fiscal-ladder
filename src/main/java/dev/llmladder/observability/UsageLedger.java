@@ -17,9 +17,9 @@ public final class UsageLedger {
 
     public record Totals(long calls, long cacheHits, long inputTokens, long outputTokens,
                          long cacheReadTokens, long cacheWriteTokens, long totalTokens, double costUsd) {
-        static final Totals ZERO = new Totals(0, 0, 0, 0, 0, 0, 0, 0);
+        public static final Totals ZERO = new Totals(0, 0, 0, 0, 0, 0, 0, 0);
 
-        Totals plus(Totals other) {
+        public Totals plus(Totals other) {
             return new Totals(calls + other.calls, cacheHits + other.cacheHits,
                     inputTokens + other.inputTokens, outputTokens + other.outputTokens,
                     cacheReadTokens + other.cacheReadTokens, cacheWriteTokens + other.cacheWriteTokens,

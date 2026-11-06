@@ -125,6 +125,20 @@ class ApiTest {
     }
 
     @Test
+    void usageImageIsAPngAndValidatesAccessAndPeriod() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/v1/usage/report.png"))
+                .header("X-Api-Key", ANALYST).GET().build();
+
+        var image = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+        assertThat(image.statusCode()).isEqualTo(200);
+        assertThat(image.headers().firstValue("content-type")).hasValue("image/png");
+        assertThat(image.body()).startsWith((byte) 0x89, (byte) 'P', (byte) 'N', (byte) 'G');
+        assertThat(send("GET", "/v1/usage/report.png", null, null).statusCode()).isEqualTo(401);
+        assertThat(send("GET", "/v1/usage/report.png?from=2026-01-01&to=2026-11-05", ANALYST, null).statusCode()).isEqualTo(400);
+    }
+
+    @Test
     void feedbackIsAccepted() throws Exception {
         var response = send("POST", "/v1/feedback", ANALYST, Map.of("traceId", "t1", "question", "CPF 123.456.789-09", "problem", "citou fonte errada"));
 

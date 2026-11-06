@@ -81,7 +81,7 @@ curl -s -X POST localhost:8080/v1/approvals/ID_DA_APROVACAO/approve -H 'X-Api-Ke
 
 Para continuar uma conversa, envie o mesmo `conversationId` (até 64 letras, números, `-` ou `_`) em `/v1/answers`. O contexto dura 30 minutos sem uso, guarda os últimos 6 turnos e continua válido mesmo que a cascata troque de modelo.
 
-Outros endpoints: `GET /v1/usage`, `GET /v1/approvals`, `POST /v1/approvals/{id}/reject`, `GET /v1/actions`, `POST /v1/actions/{id}/compensate`, `GET /v1/audit`, `GET /v1/traces/{id}` e `POST /v1/feedback`.
+Outros endpoints: `GET /v1/usage`, `GET /v1/usage/report.png`, `GET /v1/approvals`, `POST /v1/approvals/{id}/reject`, `GET /v1/actions`, `POST /v1/actions/{id}/compensate`, `GET /v1/audit`, `GET /v1/traces/{id}` e `POST /v1/feedback`.
 
 ### Com um modelo real
 
@@ -126,6 +126,16 @@ curl -s 'localhost:8080/v1/usage?from=2026-11-01&to=2026-11-30' -H 'X-Api-Key: d
 ```
 
 A resposta traz o `total`, `byModel` e `byDay` (dias em UTC), com chamadas, acertos do cache do gateway, tokens de entrada, saída, leitura e escrita de cache, além do custo estimado. Cada tenant vê apenas o próprio consumo.
+
+Para gerar o relatório como imagem PNG, com o mesmo período opcional (até 92 dias):
+
+```bash
+curl -s 'localhost:8080/v1/usage/report.png?from=2026-11-01&to=2026-11-30' -H 'X-Api-Key: demo-analista-acme' -o relatorio-consumo.png
+```
+
+![Exemplo do relatório de consumo, com dados sintéticos](docs/relatorio-consumo-exemplo.png)
+
+No modo simulado, a imagem traz o selo "Dados simulados". O exemplo acima usa dados sintéticos.
 
 No modo simulado, os tokens são estimados. Com `LADDER_LLM=anthropic`, vêm da resposta da API. O custo é sempre uma estimativa pela tabela do `ModelCatalog`; a referência de cobrança é o console da Anthropic.
 
@@ -174,7 +184,7 @@ O ponto de desenho mais importante: **as garantias estão no código, não no pr
 | Timeout não é falha | [`SefazPort`](src/main/java/dev/llmladder/fiscal/SefazPort.java): timeout vira `DESCONHECIDO`; o reenvio exige nova consulta |
 | OWASP LLM e LGPD | [`InjectionScanner`](src/main/java/dev/llmladder/guard/InjectionScanner.java), [`OutputGuard`](src/main/java/dev/llmladder/guard/OutputGuard.java), `PiiVault`, `AuditLog`, limites do gateway |
 | Contexto entre modelos | [`ConversationStore`](src/main/java/dev/llmladder/context/ConversationStore.java) |
-| Custo e latência | [`UsageLedger`](src/main/java/dev/llmladder/observability/UsageLedger.java), [`ModelCatalog`](src/main/java/dev/llmladder/llm/ModelCatalog.java), cascata em [`RagAnswerer`](src/main/java/dev/llmladder/rag/RagAnswerer.java), cache no gateway e prompt caching no adaptador |
+| Custo e latência | [`UsageLedger`](src/main/java/dev/llmladder/observability/UsageLedger.java), [`UsageReportImage`](src/main/java/dev/llmladder/observability/UsageReportImage.java), [`ModelCatalog`](src/main/java/dev/llmladder/llm/ModelCatalog.java), cascata em [`RagAnswerer`](src/main/java/dev/llmladder/rag/RagAnswerer.java), cache no gateway e prompt caching no adaptador |
 | Assistente em três versões | v1 `RagAnswerer`, v2 `DocumentWorkflow`, v3 [`FiscalAgent`](src/main/java/dev/llmladder/agent/FiscalAgent.java) |
 | MCP | [`McpStdioServer`](src/main/java/dev/llmladder/mcp/McpStdioServer.java) |
 
