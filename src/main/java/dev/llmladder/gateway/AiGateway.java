@@ -10,6 +10,7 @@ import dev.llmladder.llm.ModelCatalog;
 import dev.llmladder.llm.ToolResult;
 import dev.llmladder.llm.Usage;
 import dev.llmladder.observability.TaskTrace;
+import dev.llmladder.observability.UsageLedger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -40,6 +41,7 @@ public final class AiGateway {
     private final Clock clock;
     private final RateLimiter rateLimiter;
     private final Map<String, CachedResponse> cache;
+    private final UsageLedger usage;
 
     public AiGateway(LlmClient client, ModelCatalog catalog, Limits limits, Clock clock) {
         this.client = client;
@@ -47,6 +49,7 @@ public final class AiGateway {
         this.limits = limits;
         this.clock = clock;
         this.rateLimiter = new RateLimiter(limits.requestsPerMinute(), clock);
+        this.usage = new UsageLedger(clock);
         this.cache = Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<String, CachedResponse> eldest) {
@@ -57,6 +60,10 @@ public final class AiGateway {
 
     public ModelCatalog catalog() {
         return catalog;
+    }
+
+    public UsageLedger usage() {
+        return usage;
     }
 
     public LlmResponse call(LlmRequest request, Principal principal, PiiVault vault, TaskTrace trace) {
@@ -75,6 +82,7 @@ public final class AiGateway {
             CachedResponse hit = cache.get(cacheKey);
             if (hit != null && clock.millis() - hit.storedAtMs() < limits.cacheTtlMs()) {
                 trace.recordLlm(hit.response().model(), Usage.ZERO, 0, 0, true);
+                usage.recordCacheHit(principal.tenant(), hit.response().model());
                 return hit.response();
             }
         }
@@ -85,8 +93,9 @@ public final class AiGateway {
         long start = System.nanoTime();
         LlmResponse response = client.complete(masked);
         long latencyMs = (System.nanoTime() - start) / 1_000_000;
-        trace.recordLlm(response.model(), response.usage(),
-                catalog.estimateCostUsd(response.model(), response.usage()), latencyMs, false);
+        double cost = catalog.estimateCostUsd(response.model(), response.usage());
+        trace.recordLlm(response.model(), response.usage(), cost, latencyMs, false);
+        usage.recordCall(principal.tenant(), response.model(), response.usage(), cost);
 
         if (cacheKey != null && response.stop() == LlmResponse.Stop.END_TURN) {
             cache.put(cacheKey, new CachedResponse(response, clock.millis()));

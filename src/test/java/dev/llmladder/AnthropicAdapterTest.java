@@ -13,6 +13,7 @@ import dev.llmladder.llm.LlmRequest;
 import dev.llmladder.llm.LlmResponse;
 import dev.llmladder.llm.LlmUnavailableException;
 import dev.llmladder.llm.TaskType;
+import dev.llmladder.llm.ToolCall;
 import dev.llmladder.llm.ToolResult;
 import dev.llmladder.llm.ToolSpec;
 import java.io.IOException;
@@ -131,6 +132,23 @@ class AnthropicAdapterTest {
         JsonNode schema = bodies.get(0).path("tools").get(0).path("input_schema");
         assertThat(schema.path("properties").fieldNames()).toIterable().containsExactly("alfa", "zeta");
         assertThat(schema.path("required").get(0).asText()).isEqualTo("alfa");
+    }
+
+    @Test
+    void assistantTurnFromAnotherProviderIsRebuiltFromNeutralFormat() {
+        nextResponse = message("[{\"type\":\"text\",\"text\":\"ok\",\"citations\":null}]", "end_turn");
+        var input = Json.MAPPER.createObjectNode().put("chave", "[CHAVE_1]");
+        List<LlmMessage> messages = List.of(
+                new LlmMessage.User("incidente"),
+                new LlmMessage.Assistant("vou consultar", List.of(new ToolCall("call_1", "consultar_situacao", input)), null),
+                new LlmMessage.ToolResults(List.of(new ToolResult("call_1", "{}", false))));
+
+        client.complete(request("claude-opus-5-5", List.of(TOOL), null, messages));
+
+        JsonNode assistant = bodies.get(0).path("messages").get(1);
+        assertThat(assistant.path("content").get(0).path("text").asText()).isEqualTo("vou consultar");
+        assertThat(assistant.path("content").get(1).path("id").asText()).isEqualTo("call_1");
+        assertThat(assistant.path("content").get(1).path("input").path("chave").asText()).isEqualTo("[CHAVE_1]");
     }
 
     @Test

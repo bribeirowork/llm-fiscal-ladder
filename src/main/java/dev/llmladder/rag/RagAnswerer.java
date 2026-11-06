@@ -1,5 +1,6 @@
 package dev.llmladder.rag;
 
+import dev.llmladder.context.ConversationStore;
 import dev.llmladder.core.Demand;
 import dev.llmladder.core.Principal;
 import dev.llmladder.gateway.AiGateway;
@@ -25,20 +26,29 @@ public final class RagAnswerer implements Answerer {
     private final KnowledgeBase knowledge;
     private final AiGateway gateway;
     private final TraceStore traces;
+    private final ConversationStore conversations;
 
-    public RagAnswerer(KnowledgeBase knowledge, AiGateway gateway, TraceStore traces) {
+    public RagAnswerer(KnowledgeBase knowledge, AiGateway gateway, TraceStore traces, ConversationStore conversations) {
         this.knowledge = knowledge;
         this.gateway = gateway;
         this.traces = traces;
+        this.conversations = conversations;
     }
 
     @Override
     public Answer answer(String question, Principal principal) {
+        return answer(question, principal, null);
+    }
+
+    /** @param conversationId mantém o contexto entre perguntas, mesmo que cada uma seja atendida por outro modelo. */
+    public Answer answer(String question, Principal principal, String conversationId) {
+        ConversationStore.Conversation conversation = conversations.open(principal.tenant(), conversationId);
         TaskTrace trace = new TaskTrace(Demand.NEGOCIO, principal.tenant());
         traces.save(trace);
-        PiiVault vault = new PiiVault();
+        PiiVault vault = conversation.vault();
+        String retrievalQuery = (conversation.lastQuestion() + " " + question).strip();
 
-        List<Chunk> context = trace.step("retrieval", () -> retrieve(question, principal, trace));
+        List<Chunk> context = trace.step("retrieval", () -> retrieve(retrievalQuery, principal, trace));
         if (context.isEmpty()) {
             return new Answer("Não encontrei fonte para responder a essa pergunta.", List.of(), 0,
                     null, true, "sem fonte recuperada", trace.id());
@@ -46,7 +56,7 @@ public final class RagAnswerer implements Answerer {
 
         Map<String, Chunk> byId = context.stream().collect(Collectors.toMap(Chunk::id, Function.identity()));
         LlmRequest base = new LlmRequest(TaskType.ANSWER, "", Prompts.ANSWER_SYSTEM,
-                List.of(new LlmMessage.User(renderPrompt(question, context))),
+                List.of(new LlmMessage.User(conversation.renderHistory() + renderPrompt(question, context))),
                 List.of(), Prompts.ANSWER_SCHEMA, 2_048, LlmRequest.Effort.LOW);
 
         String lastReason = "sem resposta válida";
@@ -72,6 +82,7 @@ public final class RagAnswerer implements Answerer {
             best = new Answer(vault.unmask(parsed.answer()), citations, parsed.confidence(), response.model(),
                     !confident, confident ? null : "confiança baixa ou sem citação", trace.id());
             if (confident) {
+                conversation.record(question, best.text(), best.model());
                 return best;
             }
             lastReason = best.reason();

@@ -79,7 +79,9 @@ Use o `approvalId` devolvido:
 curl -s -X POST localhost:8080/v1/approvals/ID_DA_APROVACAO/approve -H 'X-Api-Key: demo-aprovador-acme'
 ```
 
-Outros endpoints: `GET /v1/approvals`, `POST /v1/approvals/{id}/reject`, `GET /v1/actions`, `POST /v1/actions/{id}/compensate`, `GET /v1/audit`, `GET /v1/traces/{id}` e `POST /v1/feedback`.
+Para continuar uma conversa, envie o mesmo `conversationId` (até 64 letras, números, `-` ou `_`) em `/v1/answers`. O contexto dura 30 minutos sem uso, guarda os últimos 6 turnos e continua válido mesmo que a cascata troque de modelo.
+
+Outros endpoints: `GET /v1/usage`, `GET /v1/approvals`, `POST /v1/approvals/{id}/reject`, `GET /v1/actions`, `POST /v1/actions/{id}/compensate`, `GET /v1/audit`, `GET /v1/traces/{id}` e `POST /v1/feedback`.
 
 ### Com um modelo real
 
@@ -109,6 +111,24 @@ Expõe somente ferramentas de leitura, por stdio. Reenvio e cancelamento ficam d
 mvn -q -DskipTests package && java -jar target/llm-fiscal-ladder-0.1.0.jar mcp
 ```
 
+## Medindo tokens e custo
+
+Por tarefa, use o `traceId` devolvido em cada resposta:
+
+```bash
+curl -s localhost:8080/v1/traces/ID_DO_TRACE -H 'X-Api-Key: demo-analista-acme'
+```
+
+Para o total do tenant autenticado, use `GET /v1/usage`. Sem datas, ele cobre o mês atual:
+
+```bash
+curl -s 'localhost:8080/v1/usage?from=2026-11-01&to=2026-11-30' -H 'X-Api-Key: demo-analista-acme'
+```
+
+A resposta traz o `total`, `byModel` e `byDay` (dias em UTC), com chamadas, acertos do cache do gateway, tokens de entrada, saída, leitura e escrita de cache, além do custo estimado. Cada tenant vê apenas o próprio consumo.
+
+No modo simulado, os tokens são estimados. Com `LADDER_LLM=anthropic`, vêm da resposta da API. O custo é sempre uma estimativa pela tabela do `ModelCatalog`; a referência de cobrança é o console da Anthropic.
+
 ## Arquitetura
 
 ```mermaid
@@ -119,6 +139,7 @@ flowchart TD
     O -->|v2 processo| WF[DocumentWorkflow]
     O -->|v3 automação| AG[FiscalAgent]
     RAG --> KB[(KnowledgeBase<br/>BM25 + ACL por tenant)]
+    RAG --> CTX[(ConversationStore<br/>contexto independente de modelo)]
     WF --> KB
     WF --> SEFAZ[SefazPort]
     AG --> TE[ToolExecutor<br/>perfil, limites, escopo, auditoria]
@@ -128,7 +149,7 @@ flowchart TD
     GW --> MC[ModelCatalog<br/>cascata de modelos]
     MC --> LLM[LlmClient<br/>Anthropic ou simulador]
     RAG & WF --> OG[OutputGuard]
-    OBS[Transversais: TaskTrace, AuditLog, evals] -.-> O
+    OBS[Transversais: TaskTrace, UsageLedger, AuditLog, evals] -.-> O
 ```
 
 O ponto de desenho mais importante: **as garantias estão no código, não no prompt**. O `AgentPolicyTest` usa um modelo adversário que tenta reenviar às cegas, agir em outra nota e cancelar sem permissão, e as políticas seguram mesmo assim.
@@ -152,7 +173,8 @@ O ponto de desenho mais importante: **as garantias estão no código, não no pr
 | Idempotência e compensação | [`ActionLog`](src/main/java/dev/llmladder/agent/ActionLog.java), [`ApprovalService`](src/main/java/dev/llmladder/agent/ApprovalService.java) |
 | Timeout não é falha | [`SefazPort`](src/main/java/dev/llmladder/fiscal/SefazPort.java): timeout vira `DESCONHECIDO`; o reenvio exige nova consulta |
 | OWASP LLM e LGPD | [`InjectionScanner`](src/main/java/dev/llmladder/guard/InjectionScanner.java), [`OutputGuard`](src/main/java/dev/llmladder/guard/OutputGuard.java), `PiiVault`, `AuditLog`, limites do gateway |
-| Custo e latência | [`ModelCatalog`](src/main/java/dev/llmladder/llm/ModelCatalog.java), cascata em [`RagAnswerer`](src/main/java/dev/llmladder/rag/RagAnswerer.java), cache no gateway e prompt caching no adaptador |
+| Contexto entre modelos | [`ConversationStore`](src/main/java/dev/llmladder/context/ConversationStore.java) |
+| Custo e latência | [`UsageLedger`](src/main/java/dev/llmladder/observability/UsageLedger.java), [`ModelCatalog`](src/main/java/dev/llmladder/llm/ModelCatalog.java), cascata em [`RagAnswerer`](src/main/java/dev/llmladder/rag/RagAnswerer.java), cache no gateway e prompt caching no adaptador |
 | Assistente em três versões | v1 `RagAnswerer`, v2 `DocumentWorkflow`, v3 [`FiscalAgent`](src/main/java/dev/llmladder/agent/FiscalAgent.java) |
 | MCP | [`McpStdioServer`](src/main/java/dev/llmladder/mcp/McpStdioServer.java) |
 
@@ -171,6 +193,7 @@ O ponto de desenho mais importante: **as garantias estão no código, não no pr
 - **A extração do XML é determinística,** sem LLM. O XML já tem estrutura, então um parser é mais barato e confiável. O LLM fica com a classificação.
 - **O retriever é BM25,** sem banco vetorial: é determinístico e não adiciona infraestrutura. Troque quando um eval de retrieval pedir.
 - **O desfecho do agente é calculado pelo que o sistema observou,** nunca pelo texto do modelo.
+- **O contexto fica do nosso lado, não no cache do provedor.** O prompt cache é separado por modelo: ao trocar de modelo ele é perdido, e a primeira chamada paga o prefixo completo. O que não se perde é a conversa, porque o `ConversationStore` a guarda em formato neutro, mascarada, isolada por tenant e com prazo de validade. O cache de respostas também continua separado por modelo de propósito, para uma resposta de baixa confiança do modelo menor não ser reaproveitada quando a cascata escala.
 - **Fallback entre modelos:** com Opus 5.5 e Sonnet 5.5, respostas sem ferramentas usam `fallbacks: "default"` em caso de recusa. No loop do agente, a recusa escala para um humano em vez de trocar de modelo no meio da sessão.
 
 ## Limitações conhecidas
@@ -178,7 +201,7 @@ O ponto de desenho mais importante: **as garantias estão no código, não no pr
 Este projeto é uma referência didática, não um sistema pronto para produção:
 
 - A SEFAZ é simulada. Uma integração real exige implementar `SefazPort` com certificado digital e os webservices oficiais.
-- Aprovações, auditoria, ações, cache e traces ficam em memória e se perdem ao reiniciar. Produção precisa de armazenamento durável, e a auditoria de um destino imutável.
+- Aprovações, auditoria, ações, conversas, consumo, cache e traces ficam em memória e se perdem ao reiniciar. Produção precisa de armazenamento durável, e a auditoria de um destino imutável.
 - As API keys são estáticas. Use OAuth2/JWT.
 - O sistema não verifica se a chave de acesso pertence ao tenant que a informou. Num sistema real, essa checagem é obrigatória.
 - O mascaramento de PII usa expressões regulares, então nomes e endereços em texto livre passam. Base legal, contrato com o provedor e retenção continuam sendo responsabilidade de quem opera.

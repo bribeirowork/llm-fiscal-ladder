@@ -4,6 +4,7 @@ import dev.llmladder.agent.ActionLog;
 import dev.llmladder.agent.ApprovalService;
 import dev.llmladder.agent.AuditLog;
 import dev.llmladder.agent.FiscalAgent;
+import dev.llmladder.context.ConversationStore;
 import dev.llmladder.fiscal.SimulatedSefaz;
 import dev.llmladder.gateway.AiGateway;
 import dev.llmladder.llm.LlmClient;
@@ -23,6 +24,7 @@ public final class Platform {
     public final KnowledgeBase knowledge;
     public final SimulatedSefaz sefaz;
     public final TraceStore traces = new TraceStore();
+    public final ConversationStore conversations;
     public final AuditLog audit;
     public final ActionLog actions = new ActionLog();
     public final ApprovalService approvals;
@@ -38,8 +40,9 @@ public final class Platform {
         this.sefaz = new SimulatedSefaz(clock);
         this.audit = new AuditLog(clock);
         this.approvals = new ApprovalService(sefaz, audit, actions, clock);
+        this.conversations = new ConversationStore(clock);
         this.promptOnly = new PromptOnlyAnswerer(gateway, traces);
-        this.rag = new RagAnswerer(knowledge, gateway, traces);
+        this.rag = new RagAnswerer(knowledge, gateway, traces, conversations);
         this.workflow = new DocumentWorkflow(sefaz, knowledge, gateway, traces);
         this.agent = FiscalAgent.create(gateway, sefaz, knowledge, actions, approvals, audit, traces, clock);
     }

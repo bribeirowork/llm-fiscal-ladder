@@ -19,6 +19,7 @@ import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.TextBlockParam;
 import com.anthropic.models.messages.Tool;
 import com.anthropic.models.messages.ToolResultBlockParam;
+import com.anthropic.models.messages.ToolUseBlockParam;
 import com.fasterxml.jackson.databind.JsonNode;
 import dev.llmladder.core.Json;
 import java.util.ArrayList;
@@ -67,7 +68,7 @@ public final class AnthropicLlmClient implements LlmClient {
         for (LlmMessage message : request.messages()) {
             switch (message) {
                 case LlmMessage.User user -> params.addUserMessage(user.text());
-                case LlmMessage.Assistant assistant -> params.addMessage(((Message) assistant.raw()).toParam());
+                case LlmMessage.Assistant assistant -> params.addMessage(toAssistantMessage(assistant));
                 case LlmMessage.ToolResults results -> params.addMessage(toToolResultMessage(results));
             }
         }
@@ -96,6 +97,28 @@ public final class AnthropicLlmClient implements LlmClient {
         Map<String, Object> result = new TreeMap<>();
         value.forEach((k, v) -> result.put(k, v instanceof Map<?, ?> nested ? sorted((Map<String, Object>) nested) : v));
         return result;
+    }
+
+    /** A resposta original preserva thinking; sem ela (outro provedor), o formato neutro remonta o turno. */
+    private static MessageParam toAssistantMessage(LlmMessage.Assistant assistant) {
+        if (assistant.raw() instanceof Message original) {
+            return original.toParam();
+        }
+        List<ContentBlockParam> blocks = new ArrayList<>();
+        if (!assistant.text().isEmpty()) {
+            blocks.add(ContentBlockParam.ofText(assistant.text()));
+        }
+        for (ToolCall call : assistant.toolCalls()) {
+            ToolUseBlockParam.Input.Builder input = ToolUseBlockParam.Input.builder();
+            call.input().properties().forEach(field ->
+                    input.putAdditionalProperty(field.getKey(), JsonValue.from(Json.MAPPER.convertValue(field.getValue(), Object.class))));
+            blocks.add(ContentBlockParam.ofToolUse(ToolUseBlockParam.builder()
+                    .id(call.id())
+                    .name(call.name())
+                    .input(input.build())
+                    .build()));
+        }
+        return MessageParam.ofAssistantOfContentBlockParams(blocks);
     }
 
     private static MessageParam toToolResultMessage(LlmMessage.ToolResults results) {

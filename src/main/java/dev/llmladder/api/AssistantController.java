@@ -9,10 +9,13 @@ import dev.llmladder.agent.IncidentType;
 import dev.llmladder.core.Principal;
 import dev.llmladder.fiscal.AccessKey;
 import dev.llmladder.observability.TaskTrace;
+import dev.llmladder.observability.UsageLedger;
 import dev.llmladder.rag.Answer;
 import dev.llmladder.workflow.WorkflowResult;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,13 +23,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/v1")
 class AssistantController {
-    record QuestionRequest(String question) {}
+    record QuestionRequest(String question, String conversationId) {}
 
     record DocumentRequest(String xml) {}
 
@@ -47,7 +51,7 @@ class AssistantController {
     /** v1, negócio: responde com fonte, não age. */
     @PostMapping("/answers")
     Answer answer(@RequestBody QuestionRequest request, @RequestAttribute(ApiKeyFilter.PRINCIPAL) Principal principal) {
-        return platform.rag.answer(request.question(), principal);
+        return platform.rag.answer(request.question(), principal, request.conversationId());
     }
 
     /** v2, processo: fluxo fixo, somente leitura. */
@@ -97,6 +101,15 @@ class AssistantController {
     TaskTrace.View trace(@PathVariable String id, @RequestAttribute(ApiKeyFilter.PRINCIPAL) Principal principal) {
         return platform.traces.find(id, principal.tenant())
                 .orElseThrow(() -> new ApprovalService.NotFoundException("trace não encontrado"));
+    }
+
+    /** Consumo do próprio tenant. Sem datas, cobre o mês atual. */
+    @GetMapping("/usage")
+    UsageLedger.Report usage(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestAttribute(ApiKeyFilter.PRINCIPAL) Principal principal) {
+        return platform.gateway.usage().report(principal.tenant(), from, to);
     }
 
     @PostMapping("/feedback")

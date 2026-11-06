@@ -90,6 +90,21 @@ class GatewayTest {
     }
 
     @Test
+    void recordsUsageForEveryCallAndCacheHit() {
+        AiGateway gateway = gateway(new RecordingLlm(), AiGateway.Limits.defaults());
+        gateway.call(request("mesma pergunta"), ACME, new PiiVault(), trace("acme"));
+        gateway.call(request("mesma pergunta"), ACME, new PiiVault(), trace("acme"));
+
+        var total = gateway.usage().report("acme", null, null).total();
+
+        assertThat(total.calls()).isEqualTo(1);
+        assertThat(total.cacheHits()).isEqualTo(1);
+        assertThat(total.inputTokens()).isEqualTo(1_000);
+        assertThat(total.outputTokens()).isEqualTo(500);
+        assertThat(gateway.usage().report("globex", null, null).total().calls()).isZero();
+    }
+
+    @Test
     void rateLimitIsPerTenant() {
         AiGateway gateway = gateway(new RecordingLlm(), new AiGateway.Limits(1, 60_000, 60_000, 10, 1_000));
         gateway.call(request("a"), ACME, new PiiVault(), trace("acme"));

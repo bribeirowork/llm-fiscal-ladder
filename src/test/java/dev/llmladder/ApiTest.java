@@ -58,6 +58,15 @@ class ApiTest {
     }
 
     @Test
+    void acceptsConversationIdAndRejectsInvalidOne() throws Exception {
+        var ok = send("POST", "/v1/answers", ANALYST, Map.of("question", "O que significa a rejeição 204?", "conversationId", "c-1"));
+        var bad = send("POST", "/v1/answers", ANALYST, Map.of("question", "oi", "conversationId", "../x"));
+
+        assertThat(ok.statusCode()).isEqualTo(200);
+        assertThat(bad.statusCode()).isEqualTo(400);
+    }
+
+    @Test
     void analyzesDocumentAndRejectsInvalidXml() throws Exception {
         var ok = send("POST", "/v1/documents/analyze", ANALYST, Map.of("xml", Samples.xml(Samples.key(301), "225", "Falha no Schema XML")));
         var bad = send("POST", "/v1/documents/analyze", ANALYST, Map.of("xml", "<quebrado"));
@@ -90,6 +99,29 @@ class ApiTest {
         assertThat(send("GET", "/v1/traces/" + traceId, OTHER_TENANT, null).statusCode()).isEqualTo(404);
         assertThat(send("GET", "/v1/audit", OTHER_TENANT, null).body()).isEqualTo("[]");
         assertThat(send("GET", "/v1/audit", ANALYST, null).body()).doesNotContain(key);
+    }
+
+    @Test
+    void usageReportsOnlyTheCallersTenant() throws Exception {
+        send("POST", "/v1/answers", ANALYST, Map.of("question", "O que significa a rejeicao 225 schema XML?"));
+
+        JsonNode own = Json.read(send("GET", "/v1/usage", ANALYST, null).body());
+        JsonNode other = Json.read(send("GET", "/v1/usage", OTHER_TENANT, null).body());
+
+        assertThat(own.path("tenant").asText()).isEqualTo("acme");
+        assertThat(own.path("total").path("calls").asLong()).isPositive();
+        assertThat(own.path("total").path("totalTokens").asLong()).isPositive();
+        assertThat(own.path("byModel").size()).isPositive();
+        assertThat(other.path("tenant").asText()).isEqualTo("globex");
+        assertThat(other.path("total").path("calls").asLong()).isZero();
+    }
+
+    @Test
+    void usageValidatesPeriodAndRequiresApiKey() throws Exception {
+        assertThat(send("GET", "/v1/usage", null, null).statusCode()).isEqualTo(401);
+        assertThat(send("GET", "/v1/usage?from=ontem", ANALYST, null).statusCode()).isEqualTo(400);
+        assertThat(send("GET", "/v1/usage?from=2026-11-05&to=2026-11-01", ANALYST, null).statusCode()).isEqualTo(400);
+        assertThat(send("GET", "/v1/usage?from=2026-11-01&to=2026-11-05", ANALYST, null).statusCode()).isEqualTo(200);
     }
 
     @Test
