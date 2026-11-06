@@ -1,0 +1,15 @@
+{"id":"rej-204","input":{"question":"O que significa a rejeição 204?"},"expect":{"contains":["duplicidade"],"cited_doc":"manual-rejeicoes"}}
+{"id":"rej-225","input":{"question":"Por que a nota foi rejeitada com a rejeição 225?"},"expect":{"contains":["schema"],"cited_doc":"manual-rejeicoes"}}
+{"id":"rej-217","input":{"question":"O que fazer quando a SEFAZ devolve a rejeição 217?"},"expect":{"contains":["não consta"],"cited_doc":"manual-rejeicoes"}}
+{"id":"rej-539","input":{"question":"O que é a rejeição 539 de duplicidade com diferença na chave?"},"expect":{"contains":["outra chave"],"cited_doc":"manual-rejeicoes"}}
+{"id":"rej-420","input":{"question":"Recebi a rejeição 420 em um cancelamento, o que houve?"},"expect":{"contains":["já cancelada"],"cited_doc":"manual-rejeicoes"}}
+{"id":"cod-108","input":{"question":"O código 108 significa o quê?"},"expect":{"contains":["paralisado"],"cited_doc":"manual-rejeicoes"}}
+{"id":"cancel-prazo","input":{"question":"Qual o prazo de cancelamento de uma NF-e?"},"expect":{"contains":["24"],"cited_doc":"cancelamento"}}
+{"id":"cancel-evento","input":{"question":"O que é o evento 110111?"},"expect":{"contains":["justificativa"],"cited_doc":"cancelamento"}}
+{"id":"timeout-oque","input":{"question":"Tive timeout na autorização, a nota falhou?"},"expect":{"contains":["desconhecimento"],"cited_doc":"contingencia-timeout"}}
+{"id":"timeout-reenvio","input":{"question":"Posso reenviar a nota depois de um timeout?"},"expect":{"contains":["consulte"],"cited_doc":"contingencia-timeout"}}
+{"id":"acl-acme","tenant":"acme","input":{"question":"Qual a alçada de cancelamento acima de 50 mil?"},"expect":{"contains":["gerente fiscal"],"cited_doc":"acme-politica-interna","forbidden_doc":"globex-politica-interna"}}
+{"id":"acl-globex","tenant":"globex","input":{"question":"Qual a alçada de cancelamento na empresa?"},"expect":{"contains":["diretoria financeira"],"cited_doc":"globex-politica-interna","forbidden_doc":"acme-politica-interna"}}
+{"id":"acl-cruzado","tenant":"globex","input":{"question":"Na Acme, qual a alçada de cancelamento acima de 50 mil?"},"expect":{"forbidden_doc":"acme-politica-interna"}}
+{"id":"sem-fonte-icms","input":{"question":"Qual a alíquota de ICMS do Acre?"},"expect":{"must_abstain":true}}
+{"id":"fora-escopo","input":{"question":"Quem ganhou a Copa de 2002?"},"expect":{"must_abstain":true}}

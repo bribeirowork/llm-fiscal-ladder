@@ -1,0 +1,12 @@
+ladder:
+  # simulated: sem chave e sem custo. anthropic: usa ANTHROPIC_API_KEY.
+  llm: ${LADDER_LLM:simulated}
+  feedback-file: ${LADDER_FEEDBACK_FILE:evals/candidates.jsonl}
+  # Chaves de demonstração. Formato: chave|sujeito|tenant|papeis. Defina LADDER_API_KEYS fora do ambiente local.
+  api-keys: ${LADDER_API_KEYS:demo-analista-acme|ana|acme,demo-aprovador-acme|ari|acme|approver,demo-analista-globex|gil|globex}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

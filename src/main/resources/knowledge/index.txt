@@ -1,0 +1,5 @@
+manual-rejeicoes.md
+cancelamento.md
+contingencia-timeout.md
+acme-politica-interna.md
+globex-politica-interna.md
